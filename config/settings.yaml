@@ -1,0 +1,47 @@
+timezone: Asia/Shanghai
+schedule:
+  collect_minutes: 30
+  times:
+  - '22:00'
+  catchup_minutes: 240
+briefing:
+  title: 全球高质量信息简报
+  max_items: 10
+  max_daily_items: 20
+  min_score: 0.75
+  summary_chars: 130
+  candidate_limit: 160
+  per_source_limit: 12
+  lookback_hours: 36
+  dedup_days: 7
+  max_input_chars: 500
+  max_response_chars: 120000
+  prompt: prompts/briefing.txt
+  categories:
+  - 全球经济与金融
+  - AI与人工智能产业
+  - 科技与互联网
+  - 国际政治与政策
+  - 科学与重要研究
+  - 重大社会事件
+  - 心理学、脑科学与生命科学
+  - 电子信息、DIY与机器人
+ai:
+  enabled: false
+  model: openai/deepseek-flash
+  api_base: https://api.deepseek.com
+  timeout: 120
+  num_retries: 2
+  temperature: 0.2
+  max_tokens: 6000
+  extra_params: {}
+channels:
+- feishu
+delivery:
+  enabled: true
+dashboard:
+  host: 127.0.0.1
+  port: 8765
+storage:
+  retention_days: 90
+  output_dir: output

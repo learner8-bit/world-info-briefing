@@ -1,0 +1,74 @@
+name: World info Feishu briefing
+
+on:
+  schedule:
+    # Trigger at 22:00 Asia/Shanghai; GitHub can still delay scheduled jobs.
+    - cron: '0 22 * * *'
+      timezone: 'Asia/Shanghai'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Run mode
+        required: true
+        default: test
+        type: choice
+        options:
+          - test
+          - briefing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-info-briefing
+  cancel-in-progress: false
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Check out configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: '0.8.22'
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --project vendor/TrendRadar --locked --no-dev
+
+      - name: Restore delivery state
+        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.2.0
+        with:
+          path: output/state.json
+          key: world-info-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            world-info-state-
+
+      - name: Initialize delivery state
+        shell: bash
+        run: |
+          mkdir -p output
+          test -f output/state.json || cp config/initial-state.json output/state.json
+
+      - name: Validate configuration and secret
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        run: vendor/TrendRadar/.venv/bin/python app.py ready
+
+      - name: Send connection test
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'test'
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        run: vendor/TrendRadar/.venv/bin/python app.py test-notification
+
+      - name: Collect and send briefing
+        if: github.event_name == 'schedule' || inputs.mode == 'briefing'
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        run: vendor/TrendRadar/.venv/bin/python app.py run

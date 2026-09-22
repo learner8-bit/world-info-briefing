@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "runs": {
+    "2026-09-22_20-00": {
+      "created_at": "2026-09-22T12:33:38.518453+00:00",
+      "day": "2026-09-22",
+      "status": "complete",
+      "events": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ],
+      "completed_at": "2026-09-22T12:33:39.002777+00:00"
+    }
+  },
+  "sent": {
+    "https://www.ecb.europa.eu//press/inter/date/2026/html/ecb.in260922~5f89d300ee.en.html": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "Philip R. Lane: Interview with Le Temps"
+    },
+    "https://hackaday.com/2026/09/22/raspberry-pi-locks-down-ram-upgrades/": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "Raspberry Pi Locks Down RAM Upgrades"
+    },
+    "https://www.nature.com/articles/d41586-026-02996-2": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "Biosecurity must protect human functional capacity"
+    },
+    "https://www.nature.com/articles/s41593-026-02422-w": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "Tibial bone compression promotes recovery after brain injury through osteocyte PIEZO1"
+    },
+    "https://openai.com/index/advisory-group-on-mathematics-and-ai": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "Advisory Group on Mathematics and Artificial Intelligence"
+    },
+    "https://www.raspberrypi.com/news/everything-is-better-with-lasers/": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "Everything is better with lasers"
+    },
+    "https://arstechnica.com/space/2026/09/nasa-chief-im-only-interested-in-good-deals-from-international-partners/": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "NASA chief: I'm only interested in \"good deals\" from international partners"
+    },
+    "https://www.sciencedaily.com/releases/2026/09/260920222412.htm": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "Brain scans reveal a possible cause of long COVID fatigue and brain fog"
+    },
+    "https://www.cls.cn/detail/2489731": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "两周冲上App Store榜首！一夜爆红的Meta Muse：一款AI智能体如何搅动全球科技与资本市场"
+    },
+    "https://www.thepaper.cn/newsDetail_forward_34117570": {
+      "at": "2026-09-22T12:33:39.002777+00:00",
+      "title": "重庆理工大学通报“廖某被我校原教师李某性侵后报警未立案”"
+    }
+  }
+}
