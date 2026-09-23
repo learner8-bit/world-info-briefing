@@ -42,6 +42,8 @@ briefing:
       target: 4
       keywords:
       - 人工智能
+      - 大模型
+      - 智能体
       - 模型
       - 芯片
       - 半导体
@@ -50,6 +52,17 @@ briefing:
       - 软件
       - 开源
       - 网络安全
+      - DeepSeek
+      - Qwen
+      - 通义
+      - 千问
+      - 豆包
+      - 智谱
+      - Kimi
+      - MiniMax
+      - 百川
+      - MiMo
+      - Agent
       - AI
       - model
       - chip

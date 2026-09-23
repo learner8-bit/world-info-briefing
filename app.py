@@ -16,6 +16,8 @@ import sqlite3
 import sys
 import time
 import threading
+import unicodedata
+from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, reset_tzpath
@@ -334,6 +336,63 @@ def collect(cfg, sources, out):
     return report
 
 
+def _normalized_story_text(value):
+    """Normalize punctuation, width and case while retaining Chinese and Latin text."""
+    value = unicodedata.normalize('NFKC', html.unescape(str(value or ''))).lower()
+    return re.sub(r'[\W_]+', '', value, flags=re.UNICODE)
+
+
+def _text_ngrams(value, size=2):
+    return {value[i:i + size] for i in range(max(0, len(value) - size + 1))}
+
+
+def near_duplicate_text(left, right, *, summary=False):
+    """Conservative same-language similarity check used while AI is disabled."""
+    left = _normalized_story_text(left)
+    right = _normalized_story_text(right)
+    minimum = 30 if summary else 12
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if min(len(left), len(right)) < minimum:
+        return False
+    if min(len(left), len(right)) / max(len(left), len(right)) < 0.68:
+        return False
+    sequence = SequenceMatcher(None, left, right, autojunk=False).ratio()
+    left_grams, right_grams = _text_ngrams(left), _text_ngrams(right)
+    jaccard = len(left_grams & right_grams) / max(1, len(left_grams | right_grams))
+    if summary:
+        return sequence >= 0.93 or (sequence >= 0.86 and jaccard >= 0.78)
+    return sequence >= 0.88 or (sequence >= 0.80 and jaccard >= 0.72)
+
+
+def deduplicate_rows(rows, recent_titles=()):
+    """Remove same-URL, same-title and conservative near-duplicate stories."""
+    kept = []
+    recent = [title for title in recent_titles if title]
+    seen_urls = set()
+    for row in rows:
+        if row['url'] in seen_urls:
+            continue
+        if any(near_duplicate_text(row['title'], title) for title in recent):
+            continue
+        duplicate = False
+        for previous in kept:
+            if near_duplicate_text(row['title'], previous['title']):
+                duplicate = True
+                break
+            if (row.get('summary') and previous.get('summary') and
+                    near_duplicate_text(row['summary'], previous['summary'], summary=True)):
+                duplicate = True
+                break
+        if duplicate:
+            continue
+        kept.append(row)
+        seen_urls.add(row['url'])
+    return kept
+
+
 def candidates(cfg, sources, out, state, now=None):
     now = now or utcnow()
     b = cfg['briefing']
@@ -375,8 +434,11 @@ def candidates(cfg, sources, out, state, now=None):
                                 'published_at': stamp(published) if published else '未知', 'seen_at': stamp(seen),
                                 'summary': summary, 'evidence': 'RSS摘要' if summary else '仅标题信息',
                                 'priority': source.get('priority', 2),
-                                'group': source.get('group', 'technology')}
-    # 同URL硬去重；同标题与跨语言同事件交给AI合并，以保留多源证据。
+                                'group': source.get('group', 'technology'),
+                                'role': source.get('role', source['id']),
+                                'tier': source.get('tier', 'supplementary')}
+    # 先按来源轮询，再做同 URL、同语种近似标题和近似摘要去重。
+    # 跨语言同事件仍需 AI 才能可靠合并。
     queues = {}
     for item in sorted(grouped.values(), key=lambda r: r['published_at'] if r['published_at'] != '未知' else r['seen_at'], reverse=True):
         queues.setdefault(item['source_id'], []).append(item)
@@ -386,9 +448,12 @@ def candidates(cfg, sources, out, state, now=None):
         for sid in order:
             if i < len(queues[sid]):
                 selected.append(queues[sid][i])
-                if len(selected) == b['candidate_limit']:
-                    return selected
-    return selected
+    recent_titles = [
+        info.get('title', '') for info in state.get('sent', {}).values()
+        if isinstance(info, dict) and parse_date(info.get('at')) and
+        parse_date(info['at']) > now - timedelta(days=b['dedup_days'])
+    ]
+    return deduplicate_rows(selected, recent_titles)[:b['candidate_limit']]
 
 
 def check_response(raw, rows, cfg, limit):
@@ -452,18 +517,6 @@ def analyze(rows, cfg, state, limit):
     return check_response(raw, rows, cfg, limit)
 
 
-def select_without_ai(rows, cfg, limit):
-    """原文速览只做来源轮询和 URL 去重，不对内容作真实性或价值判断。"""
-    events = []
-    for row in rows[:limit]:
-        events.append({
-            'title': row['title'], 'category': '原文速览', 'score': None,
-            'summary': clean_text(row.get('summary') or '仅有标题，请打开原文核对。', cfg['briefing']['summary_chars']),
-            'sources': [row],
-        })
-    return events
-
-
 def _keyword_match(text, keyword):
     keyword = keyword.lower()
     if keyword.isascii() and len(keyword) <= 3:
@@ -488,29 +541,44 @@ def classify_without_ai(row, cfg):
 
 
 def select_without_ai(rows, cfg, limit):
-    """Apply soft group targets; unused slots return to the global candidate pool."""
+    """Apply soft targets with story, source and source-role diversity."""
     mix = cfg['briefing']['mix']
-    classified = [(row, classify_without_ai(row, cfg)) for row in rows]
+    classified = [(row, classify_without_ai(row, cfg)) for row in deduplicate_rows(rows)]
     chosen = []
     used = set()
     counts = {group: 0 for group in mix}
+    source_counts = {}
+    role_counts = {}
+
+    def take(row, group):
+        chosen.append((row, group))
+        used.add(row['url'])
+        counts[group] += 1
+        source_counts[row['source_id']] = source_counts.get(row['source_id'], 0) + 1
+        role = row.get('role', row['source_id'])
+        role_counts[(group, role)] = role_counts.get((group, role), 0) + 1
 
     for group, rule in mix.items():
-        for row, row_group in classified:
-            if counts[group] >= rule['target'] or len(chosen) >= limit:
-                break
-            if row_group != group or row['url'] in used:
-                continue
-            chosen.append((row, group))
-            used.add(row['url'])
-            counts[group] += 1
+        # First take different source roles, then different sources, and only
+        # use a second story from one source when a category would be short.
+        for unique_role, source_cap in ((True, 1), (False, 1), (False, 2)):
+            for row, row_group in classified:
+                if counts[group] >= rule['target'] or len(chosen) >= limit:
+                    break
+                role = row.get('role', row['source_id'])
+                if (row_group != group or row['url'] in used or
+                        source_counts.get(row['source_id'], 0) >= source_cap or
+                        (unique_role and role_counts.get((group, role), 0))):
+                    continue
+                take(row, group)
 
-    for row, group in classified:
-        if len(chosen) >= limit:
-            break
-        if row['url'] not in used:
-            chosen.append((row, group))
-            used.add(row['url'])
+    for source_cap in (1, 2):
+        for row, group in classified:
+            if len(chosen) >= limit:
+                break
+            if row['url'] in used or source_counts.get(row['source_id'], 0) >= source_cap:
+                continue
+            take(row, group)
 
     events = []
     for row, group in chosen:
@@ -553,7 +621,7 @@ def render(events, cfg, at, collection=None, label=''):
                     '',
                 ]
         lines += [
-            '按代表性来源、时间窗口、来源轮询、URL去重和4/4/2软配额选取；'
+            '按代表性来源、时间窗口、来源轮询、URL/近似标题/摘要去重和4/4/2软配额选取；'
             '没有事实核查、跨来源合并或AI质量评分。'
         ]
         return '\n'.join(lines)

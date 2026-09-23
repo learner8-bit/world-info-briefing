@@ -1,114 +1,354 @@
 rss:
 - id: bbc-world
-  group: politics_economy
-  name: BBC世界
+  name: BBC 世界
   url: https://feeds.bbci.co.uk/news/world/rss.xml
   priority: 1
   max_age_days: 2
-  enabled: true
+  group: politics_economy
+  tier: core
+  role: global_news
 - id: bbc-business
-  group: politics_economy
-  name: BBC经济
+  name: BBC 商业与经济
   url: https://feeds.bbci.co.uk/news/business/rss.xml
-  priority: 2
+  priority: 1
   max_age_days: 2
-  enabled: true
-- id: guardian-world
   group: politics_economy
-  name: Guardian世界
+  tier: core
+  role: economy_news
+- id: guardian-world
+  name: Guardian 世界
   url: https://www.theguardian.com/world/rss
   priority: 2
   max_age_days: 2
-  enabled: true
-- id: federal-reserve
   group: politics_economy
+  tier: supplementary
+  role: global_news
+- id: aljazeera
+  name: Al Jazeera
+  url: https://www.aljazeera.com/xml/rss/all.xml
+  priority: 1
+  max_age_days: 2
+  group: politics_economy
+  tier: core
+  role: global_news
+- id: dw
+  name: Deutsche Welle
+  url: https://rss.dw.com/rdf/rss-en-all
+  priority: 2
+  max_age_days: 2
+  group: politics_economy
+  tier: supplementary
+  role: europe_news
+- id: lemonde-world
+  name: Le Monde 国际版
+  url: https://www.lemonde.fr/en/international/rss_full.xml
+  priority: 2
+  max_age_days: 2
+  group: politics_economy
+  tier: supplementary
+  role: europe_news
+- id: cna-asia
+  name: CNA 亚洲
+  url: https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511
+  priority: 1
+  max_age_days: 2
+  group: politics_economy
+  tier: core
+  role: asia_news
+- id: npr-world
+  name: NPR 世界
+  url: https://feeds.npr.org/1004/rss.xml
+  priority: 2
+  max_age_days: 2
+  group: politics_economy
+  tier: supplementary
+  role: global_news
+- id: un-news
+  name: 联合国新闻
+  url: https://news.un.org/feed/subscribe/en/news/all/rss.xml
+  priority: 2
+  max_age_days: 3
+  group: politics_economy
+  tier: primary
+  role: institution
+- id: federal-reserve
   name: 美联储公告
   url: https://www.federalreserve.gov/feeds/press_all.xml
   priority: 1
   max_age_days: 3
-  enabled: true
-- id: ecb
   group: politics_economy
+  tier: primary
+  role: central_bank
+- id: ecb
   name: 欧洲央行公告
   url: https://www.ecb.europa.eu/rss/press.html
   priority: 1
   max_age_days: 3
-  enabled: true
+  group: politics_economy
+  tier: primary
+  role: central_bank
+- id: boe
+  name: 英格兰银行公告
+  url: https://www.bankofengland.co.uk/rss/news
+  priority: 1
+  max_age_days: 3
+  group: politics_economy
+  tier: primary
+  role: central_bank
+- id: boj
+  name: 日本银行公告
+  url: https://www.boj.or.jp/en/rss/whatsnew.xml
+  priority: 2
+  max_age_days: 3
+  group: politics_economy
+  tier: primary
+  role: central_bank
+- id: bis
+  name: 国际清算银行公告
+  url: https://www.bis.org/doclist/all_pressrels.rss
+  priority: 1
+  max_age_days: 5
+  group: politics_economy
+  tier: primary
+  role: global_finance
+- id: wto
+  name: 世界贸易组织新闻
+  url: https://www.wto.org/library/rss/latest_news_e.xml
+  priority: 2
+  max_age_days: 5
+  group: politics_economy
+  tier: primary
+  role: global_trade
 - id: openai
-  group: technology
-  name: OpenAI官方
+  name: OpenAI 官方
   url: https://openai.com/news/rss.xml
   priority: 1
   max_age_days: 3
-  enabled: true
-- id: mit-ai
   group: technology
-  name: MIT人工智能
-  url: https://news.mit.edu/rss/topic/artificial-intelligence2
+  tier: primary
+  role: ai_lab
+- id: deepmind
+  name: Google DeepMind
+  url: https://deepmind.google/blog/rss.xml
   priority: 1
   max_age_days: 3
-  enabled: true
-- id: ars
   group: technology
+  tier: primary
+  role: ai_lab
+- id: google-research
+  name: Google Research
+  url: https://research.google/blog/rss/
+  priority: 1
+  max_age_days: 5
+  group: technology
+  tier: primary
+  role: ai_research
+- id: qbitai
+  name: 量子位
+  url: https://www.qbitai.com/feed
+  priority: 1
+  max_age_days: 3
+  group: technology
+  tier: core
+  role: china_ai
+- id: infoq-cn
+  name: InfoQ 中文
+  url: https://www.infoq.cn/feed
+  priority: 2
+  max_age_days: 3
+  group: technology
+  tier: core
+  role: china_ai_engineering
+- id: leiphone
+  name: 雷峰网
+  url: https://www.leiphone.com/feed
+  priority: 2
+  max_age_days: 3
+  group: technology
+  tier: core
+  role: china_ai_industry
+- id: nvidia-developer
+  name: NVIDIA Developer
+  url: https://developer.nvidia.com/blog/feed/
+  priority: 1
+  max_age_days: 3
+  group: technology
+  tier: primary
+  role: ai_chip
+- id: huggingface
+  name: Hugging Face
+  url: https://huggingface.co/blog/feed.xml
+  priority: 1
+  max_age_days: 3
+  group: technology
+  tier: primary
+  role: open_source_ai
+- id: mit-ai
+  name: MIT 人工智能
+  url: https://news.mit.edu/rss/topic/artificial-intelligence2
+  priority: 1
+  max_age_days: 4
+  group: technology
+  tier: core
+  role: research_news
+- id: ars
   name: Ars Technica
   url: https://feeds.arstechnica.com/arstechnica/index
-  priority: 2
+  priority: 1
   max_age_days: 2
-  enabled: true
+  group: technology
+  tier: core
+  role: technology_news
+- id: ieee-spectrum
+  name: IEEE Spectrum
+  url: https://spectrum.ieee.org/feeds/feed.rss
+  priority: 1
+  max_age_days: 3
+  group: technology
+  tier: core
+  role: engineering_news
+- id: github-blog
+  name: GitHub Blog
+  url: https://github.blog/feed/
+  priority: 2
+  max_age_days: 4
+  group: technology
+  tier: primary
+  role: software_engineering
+- id: cloudflare-blog
+  name: Cloudflare Blog
+  url: https://blog.cloudflare.com/rss/
+  priority: 2
+  max_age_days: 4
+  group: technology
+  tier: primary
+  role: internet_infrastructure
+- id: krebs-security
+  name: Krebs on Security
+  url: https://krebsonsecurity.com/feed/
+  priority: 1
+  max_age_days: 5
+  group: technology
+  tier: core
+  role: cybersecurity
+- id: semiengineering
+  name: Semiconductor Engineering
+  url: https://semiengineering.com/feed/
+  priority: 1
+  max_age_days: 4
+  group: technology
+  tier: specialist
+  role: semiconductor
+- id: hackaday
+  name: Hackaday
+  url: https://hackaday.com/feed/
+  priority: 2
+  max_age_days: 3
+  group: technology
+  tier: specialist
+  role: diy_hardware
+- id: raspberrypi
+  name: Raspberry Pi 官方
+  url: https://www.raspberrypi.com/news/feed/
+  priority: 2
+  max_age_days: 7
+  group: technology
+  tier: specialist
+  role: dev_board
+- id: nasa
+  name: NASA 新闻发布
+  url: https://www.nasa.gov/news-release/feed/
+  priority: 2
+  max_age_days: 5
+  group: technology
+  tier: primary
+  role: space
 - id: nature
-  group: bioscience
   name: Nature
   url: https://www.nature.com/nature.rss
   priority: 1
-  max_age_days: 3
-  enabled: true
-- id: nature-neuro
+  max_age_days: 4
   group: bioscience
+  tier: primary
+  role: multidisciplinary_research
+- id: nature-neuro
   name: Nature Neuroscience
   url: https://www.nature.com/neuro.rss
   priority: 1
   max_age_days: 7
-  enabled: true
-- id: sciencedaily-brain
   group: bioscience
-  name: ScienceDaily心理与脑科学
-  url: https://www.sciencedaily.com/rss/mind_brain.xml
-  priority: 2
-  max_age_days: 3
-  enabled: true
-- id: hackaday
-  group: technology
-  name: Hackaday
-  url: https://hackaday.com/feed/
+  tier: primary
+  role: neuroscience_journal
+- id: science-news
+  name: Science 新闻
+  url: https://www.science.org/rss/news_current.xml
   priority: 1
-  max_age_days: 3
-  enabled: true
-- id: raspberrypi
-  group: technology
-  name: Raspberry Pi官方
-  url: https://www.raspberrypi.com/news/feed/
+  max_age_days: 4
+  group: bioscience
+  tier: core
+  role: science_news
+- id: pnas
+  name: PNAS 最新论文
+  url: https://www.pnas.org/action/showFeed?type=etoc&feed=rss&jc=pnas
+  priority: 2
+  max_age_days: 7
+  group: bioscience
+  tier: primary
+  role: multidisciplinary_research
+- id: cell
+  name: Cell 最新论文
+  url: https://www.cell.com/cell/current.rss
   priority: 1
   max_age_days: 7
-  enabled: true
+  group: bioscience
+  tier: primary
+  role: life_science_journal
+- id: who
+  name: 世界卫生组织新闻
+  url: https://www.who.int/rss-feeds/news-english.xml
+  priority: 1
+  max_age_days: 5
+  group: bioscience
+  tier: primary
+  role: public_health
+- id: neuroscience-news
+  name: Neuroscience News
+  url: https://neurosciencenews.com/feed/
+  priority: 2
+  max_age_days: 3
+  group: bioscience
+  tier: supplementary
+  role: neuroscience_news
+- id: sciencedaily-brain
+  name: ScienceDaily 心理与脑科学
+  url: https://www.sciencedaily.com/rss/mind_brain.xml
+  priority: 3
+  max_age_days: 3
+  group: bioscience
+  tier: discovery
+  role: psychology_brain_discovery
 platforms:
 - id: wallstreetcn-hot
-  group: politics_economy
   name: 华尔街见闻
   expected_domain: wallstreetcn.com
-  priority: 3
-  enabled: true
-- id: cls-hot
+  priority: 2
   group: politics_economy
+  tier: core
+  role: china_market
+- id: cls-hot
   name: 财联社
   expected_domain: cls.cn
-  priority: 3
-  enabled: true
-- id: thepaper
+  priority: 2
   group: politics_economy
+  tier: core
+  role: china_finance
+- id: thepaper
   name: 澎湃新闻
   expected_domain: thepaper.cn
   priority: 3
-  enabled: true
+  group: politics_economy
+  tier: supplementary
+  role: china_public_affairs
 network:
   rss_timeout: 20
   request_interval_ms: 1000
