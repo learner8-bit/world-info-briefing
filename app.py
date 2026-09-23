@@ -517,6 +517,26 @@ def analyze(rows, cfg, state, limit):
     return check_response(raw, rows, cfg, limit)
 
 
+def test_ai_connection(cfg):
+    """Make a tiny structured-output request without using news content."""
+    from trendradar.ai.client import AIClient
+    require_secrets(cfg, ai=True)
+    ai = {key.upper(): value for key, value in cfg['ai'].items()}
+    ai.update(API_KEY=os.environ['AI_API_KEY'], MODEL=os.environ.get('AI_MODEL', ai['MODEL']),
+              API_BASE=os.environ.get('AI_API_BASE', ai['API_BASE']))
+    params = dict(cfg['ai'].get('extra_params', {}))
+    params.update(max_tokens=32, temperature=0)
+    with quiet_upstream():
+        raw = AIClient(ai).chat([
+            {'role': 'system', 'content': '只输出 JSON 对象。'},
+            {'role': 'user', 'content': '输出 {"ok":true}，不要增加其他字段。'},
+        ], **params)
+    payload = json.loads(raw)
+    if payload != {'ok': True}:
+        raise RuntimeError('DeepSeek 返回格式不符合预期')
+    print('DeepSeek API 连接和 JSON 输出测试成功。')
+
+
 def _keyword_match(text, keyword):
     keyword = keyword.lower()
     if keyword.isascii() and len(keyword) <= 3:
@@ -895,7 +915,7 @@ def run_dashboard(cfg):
 
 def main():
     parser = argparse.ArgumentParser(description='TrendRadar全球信息简报')
-    parser.add_argument('action', choices=['validate', 'ready', 'collect', 'preview', 'run', 'dashboard', 'serve', 'status', 'health', 'test-notification'])
+    parser.add_argument('action', choices=['validate', 'ready', 'collect', 'preview', 'run', 'dashboard', 'serve', 'status', 'health', 'test-ai', 'test-notification'])
     args = parser.parse_args()
     cfg, sources = configuration()
     out = output_dir(cfg)
@@ -969,6 +989,8 @@ def main():
                 if not send(channel, cfg['briefing']['title'] + '\n这是一条连接测试消息，不是新闻简报。', cfg, out, '连接测试'):
                     raise RuntimeError(f'{channel} 连接测试失败')
             print('通知测试成功')
+        elif args.action == 'test-ai':
+            test_ai_connection(cfg)
 
 
 if __name__ == '__main__':

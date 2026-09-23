@@ -60,6 +60,7 @@ jobs:
       - name: Validate configuration and secret
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: vendor/TrendRadar/.venv/bin/python app.py ready
 
       - name: Send connection test
@@ -72,4 +73,5 @@ jobs:
         if: github.event_name == 'schedule' || inputs.mode == 'briefing'
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: vendor/TrendRadar/.venv/bin/python app.py run
