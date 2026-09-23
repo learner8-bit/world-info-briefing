@@ -8,6 +8,82 @@ briefing:
   title: 全球高质量信息简报
   max_items: 10
   max_daily_items: 20
+  mix:
+    politics_economy:
+      label: 政治与经济热点
+      target: 4
+      keywords:
+      - 央行
+      - 利率
+      - 通胀
+      - GDP
+      - 经济
+      - 金融
+      - 市场
+      - 政策
+      - 政府
+      - 选举
+      - 外交
+      - 制裁
+      - 冲突
+      - 战争
+      - central bank
+      - inflation
+      - economy
+      - financial
+      - policy
+      - government
+      - election
+      - diplomacy
+      - sanction
+      - conflict
+    technology:
+      label: 科技与电子信息
+      target: 4
+      keywords:
+      - 人工智能
+      - 模型
+      - 芯片
+      - 半导体
+      - 机器人
+      - 开发板
+      - 软件
+      - 开源
+      - 网络安全
+      - AI
+      - model
+      - chip
+      - semiconductor
+      - robot
+      - software
+      - open source
+      - cybersecurity
+      - Raspberry Pi
+    bioscience:
+      label: 生物科学与脑科学
+      target: 2
+      keywords:
+      - 生物
+      - 医学
+      - 临床
+      - 心理
+      - 神经
+      - 大脑
+      - 脑
+      - 基因
+      - 细胞
+      - 蛋白质
+      - 疾病
+      - biology
+      - medical
+      - clinical
+      - psychology
+      - neuroscience
+      - brain
+      - gene
+      - cell
+      - protein
+      - disease
   min_score: 0.75
   summary_chars: 130
   candidate_limit: 160

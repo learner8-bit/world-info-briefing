@@ -115,6 +115,20 @@ def validate(cfg, sources):
                  'per_source_limit', 'lookback_hours', 'dedup_days', 'max_input_chars', 'max_response_chars'):
         if type(b[name]) is not int or b[name] <= 0:
             raise ValueError(f'briefing.{name} 必须是正整数')
+    mix = b.get('mix')
+    if not isinstance(mix, dict) or set(mix) != {'politics_economy', 'technology', 'bioscience'}:
+        raise ValueError('briefing.mix must define politics_economy, technology and bioscience')
+    for key, rule in mix.items():
+        if not isinstance(rule, dict) or not isinstance(rule.get('label'), str) or not rule['label'].strip():
+            raise ValueError(f'briefing.mix.{key}.label is invalid')
+        if type(rule.get('target')) is not int or rule['target'] < 0:
+            raise ValueError(f'briefing.mix.{key}.target must be a non-negative integer')
+        if not isinstance(rule.get('keywords'), list) or any(
+            not isinstance(x, str) or not x.strip() for x in rule['keywords']
+        ):
+            raise ValueError(f'briefing.mix.{key}.keywords is invalid')
+    if sum(rule['target'] for rule in mix.values()) > b['max_items']:
+        raise ValueError('briefing.mix targets cannot exceed briefing.max_items')
     if b['max_items'] > b['max_daily_items'] or b['max_items'] > 50:
         raise ValueError('max_items 必须不超过每日上限，且单份最多50条')
     if not 0 <= b['min_score'] <= 1 or not b['categories'] or len(set(b['categories'])) != len(b['categories']):
@@ -140,6 +154,8 @@ def validate(cfg, sources):
     for kind in ('rss', 'platforms'):
         for source in sources[kind]:
             ids.append(source['id'])
+            if source.get('group', 'technology') not in mix:
+                raise ValueError(f"source {source['id']} has an invalid group")
             if kind == 'rss' and not canonical_url(source['url']):
                 raise ValueError('RSS URL无效')
             if kind == 'rss' and source.get('max_age_days', 3) <= 0:
@@ -172,7 +188,8 @@ def editable_snapshot(cfg, sources):
             'briefing': {
                 key: cfg['briefing'][key] for key in (
                     'title', 'max_items', 'max_daily_items', 'min_score', 'summary_chars',
-                    'candidate_limit', 'per_source_limit', 'lookback_hours', 'dedup_days', 'categories'
+                    'candidate_limit', 'per_source_limit', 'lookback_hours', 'dedup_days',
+                    'categories', 'mix'
                 )
             },
             'ai': {'enabled': cfg['ai']['enabled']},
@@ -357,7 +374,8 @@ def candidates(cfg, sources, out, state, now=None):
                                 'source_id': source['id'], 'source': row['source_name'],
                                 'published_at': stamp(published) if published else '未知', 'seen_at': stamp(seen),
                                 'summary': summary, 'evidence': 'RSS摘要' if summary else '仅标题信息',
-                                'priority': source.get('priority', 2)}
+                                'priority': source.get('priority', 2),
+                                'group': source.get('group', 'technology')}
     # 同URL硬去重；同标题与跨语言同事件交给AI合并，以保留多源证据。
     queues = {}
     for item in sorted(grouped.values(), key=lambda r: r['published_at'] if r['published_at'] != '未知' else r['seen_at'], reverse=True):
@@ -446,6 +464,69 @@ def select_without_ai(rows, cfg, limit):
     return events
 
 
+def _keyword_match(text, keyword):
+    keyword = keyword.lower()
+    if keyword.isascii() and len(keyword) <= 3:
+        return re.search(rf'(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])', text) is not None
+    return keyword in text
+
+
+def classify_without_ai(row, cfg):
+    """Classify by configurable title/summary hints, then source group."""
+    mix = cfg['briefing']['mix']
+    default = row.get('group', 'technology')
+    text = f"{row.get('title', '')} {row.get('summary', '')}".lower()
+    scores = {
+        key: sum(1 for keyword in rule['keywords'] if _keyword_match(text, keyword))
+        for key, rule in mix.items()
+    }
+    best = max(scores.values(), default=0)
+    if best == 0:
+        return default
+    winners = [key for key, score in scores.items() if score == best]
+    return default if default in winners else winners[0]
+
+
+def select_without_ai(rows, cfg, limit):
+    """Apply soft group targets; unused slots return to the global candidate pool."""
+    mix = cfg['briefing']['mix']
+    classified = [(row, classify_without_ai(row, cfg)) for row in rows]
+    chosen = []
+    used = set()
+    counts = {group: 0 for group in mix}
+
+    for group, rule in mix.items():
+        for row, row_group in classified:
+            if counts[group] >= rule['target'] or len(chosen) >= limit:
+                break
+            if row_group != group or row['url'] in used:
+                continue
+            chosen.append((row, group))
+            used.add(row['url'])
+            counts[group] += 1
+
+    for row, group in classified:
+        if len(chosen) >= limit:
+            break
+        if row['url'] not in used:
+            chosen.append((row, group))
+            used.add(row['url'])
+
+    events = []
+    for row, group in chosen:
+        events.append({
+            'title': row['title'],
+            'category': mix[group]['label'],
+            'score': None,
+            'summary': clean_text(
+                row.get('summary') or 'Only a title is available; open the source to verify.',
+                cfg['briefing']['summary_chars'],
+            ),
+            'sources': [row],
+        })
+    return events
+
+
 def render(events, cfg, at, collection=None, label=''):
     lines = [f"{cfg['briefing']['title']} {label}".strip(), at, '']
     if collection:
@@ -456,6 +537,26 @@ def render(events, cfg, at, collection=None, label=''):
     if not events:
         lines.append('本期没有达到筛选标准的新内容，不补凑条目。')
     if not cfg['ai']['enabled'] and events:
+        lines += ['', '【原文速览｜未经过 AI 筛选】']
+        for rule in cfg['briefing']['mix'].values():
+            group = [event for event in events if event['category'] == rule['label']]
+            if not group:
+                continue
+            lines += ['', f"【{rule['label']}｜{len(group)}条】"]
+            for event in group:
+                source = event['sources'][0]
+                lines += [
+                    event['title'],
+                    event['summary'],
+                    f"来源：{source['source']}｜{source['evidence']}｜发布：{source['published_at']}",
+                    source['url'],
+                    '',
+                ]
+        lines += [
+            '按代表性来源、时间窗口、来源轮询、URL去重和4/4/2软配额选取；'
+            '没有事实核查、跨来源合并或AI质量评分。'
+        ]
+        return '\n'.join(lines)
         lines += ['', '【原文速览｜未经过 AI 筛选】']
         for e in events:
             source = e['sources'][0]
