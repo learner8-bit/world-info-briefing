@@ -2,8 +2,9 @@ name: World info Feishu briefing
 
 on:
   schedule:
-    # Trigger at 22:00 Asia/Shanghai; GitHub can still delay scheduled jobs.
-    - cron: '0 22 * * *'
+    # Queue before 22:00 to avoid GitHub's top-of-hour congestion. The first
+    # step waits until 22:00 and refuses overnight delivery if GitHub is late.
+    - cron: '53 21 * * *'
       timezone: 'Asia/Shanghai'
   workflow_dispatch:
     inputs:
@@ -31,6 +32,30 @@ jobs:
     env:
       PYTHONUTF8: '1'
     steps:
+      - name: Decide scheduled delivery window
+        id: delivery_window
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "schedule" ]]; then
+            echo "send=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          local_hm="$(TZ=Asia/Shanghai date +%H%M)"
+          local_minutes=$((10#${local_hm:0:2} * 60 + 10#${local_hm:2:2}))
+          if (( local_minutes < 1310 || local_minutes > 1410 )); then
+            echo "Scheduled run started outside 21:50-23:30 Asia/Shanghai; skipping delivery."
+            echo "send=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if (( local_minutes < 1320 )); then
+            local_seconds="$(TZ=Asia/Shanghai date +%S)"
+            wait_seconds=$(((1320 - local_minutes) * 60 - 10#$local_seconds))
+            (( wait_seconds > 0 )) && sleep "$wait_seconds"
+          fi
+          echo "send=true" >> "$GITHUB_OUTPUT"
+
       - name: Check out configuration
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -70,7 +95,7 @@ jobs:
         run: vendor/TrendRadar/.venv/bin/python app.py test-notification
 
       - name: Collect and send briefing
-        if: github.event_name == 'schedule' || inputs.mode == 'briefing'
+        if: (github.event_name == 'schedule' && steps.delivery_window.outputs.send == 'true') || inputs.mode == 'briefing'
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
