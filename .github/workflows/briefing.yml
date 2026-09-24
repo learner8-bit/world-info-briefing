@@ -2,9 +2,9 @@ name: World info Feishu briefing
 
 on:
   schedule:
-    # Queue before 22:00 to avoid GitHub's top-of-hour congestion. The first
+    # Queue well before 22:00 to avoid GitHub's top-of-hour congestion. The first
     # step waits until 22:00 and refuses overnight delivery if GitHub is late.
-    - cron: '53 21 * * *'
+    - cron: '30 21 * * *'
       timezone: 'Asia/Shanghai'
   workflow_dispatch:
     inputs:
@@ -28,7 +28,7 @@ concurrency:
 jobs:
   briefing:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       PYTHONUTF8: '1'
     steps:
@@ -43,8 +43,8 @@ jobs:
 
           local_hm="$(TZ=Asia/Shanghai date +%H%M)"
           local_minutes=$((10#${local_hm:0:2} * 60 + 10#${local_hm:2:2}))
-          if (( local_minutes < 1310 || local_minutes > 1410 )); then
-            echo "Scheduled run started outside 21:50-23:30 Asia/Shanghai; skipping delivery."
+          if (( local_minutes < 1285 || local_minutes > 1410 )); then
+            echo "Scheduled run started outside 21:25-23:30 Asia/Shanghai; skipping delivery."
             echo "send=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
