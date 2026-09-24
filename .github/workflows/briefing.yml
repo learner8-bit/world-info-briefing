@@ -2,9 +2,15 @@ name: World info Feishu briefing
 
 on:
   schedule:
-    # Queue well before 22:00 to avoid GitHub's top-of-hour congestion. The first
-    # step waits until 22:00 and refuses overnight delivery if GitHub is late.
-    - cron: '30 21 * * *'
+    # The primary run queues 77 minutes early and waits until 22:00. Three later
+    # runs retry only when today's delivery state still shows a missing briefing.
+    - cron: '43 20 * * *'
+      timezone: 'Asia/Shanghai'
+    - cron: '11 22 * * *'
+      timezone: 'Asia/Shanghai'
+    - cron: '41 22 * * *'
+      timezone: 'Asia/Shanghai'
+    - cron: '11 23 * * *'
       timezone: 'Asia/Shanghai'
   workflow_dispatch:
     inputs:
@@ -28,7 +34,7 @@ concurrency:
 jobs:
   briefing:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       PYTHONUTF8: '1'
     steps:
@@ -43,8 +49,8 @@ jobs:
 
           local_hm="$(TZ=Asia/Shanghai date +%H%M)"
           local_minutes=$((10#${local_hm:0:2} * 60 + 10#${local_hm:2:2}))
-          if (( local_minutes < 1285 || local_minutes > 1410 )); then
-            echo "Scheduled run started outside 21:25-23:30 Asia/Shanghai; skipping delivery."
+          if (( local_minutes < 1235 || local_minutes > 1410 )); then
+            echo "Scheduled run started outside 20:35-23:30 Asia/Shanghai; skipping delivery."
             echo "send=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -82,7 +88,17 @@ jobs:
           mkdir -p output
           test -f output/state.json || cp config/initial-state.json output/state.json
 
+      - name: Check whether today's briefing still needs delivery
+        id: delivery_needed
+        if: steps.delivery_window.outputs.send == 'true'
+        shell: bash
+        run: |
+          needed="$(vendor/TrendRadar/.venv/bin/python app.py delivery-needed)"
+          echo "needed=$needed" >> "$GITHUB_OUTPUT"
+          echo "Delivery needed: $needed"
+
       - name: Validate configuration and secret
+        if: github.event_name == 'workflow_dispatch' || steps.delivery_needed.outputs.needed == 'true'
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
@@ -94,9 +110,24 @@ jobs:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
         run: vendor/TrendRadar/.venv/bin/python app.py test-notification
 
-      - name: Collect and send briefing
-        if: (github.event_name == 'schedule' && steps.delivery_window.outputs.send == 'true') || inputs.mode == 'briefing'
+      - name: Collect and send AI briefing
+        id: ai_briefing
+        if: (github.event_name == 'schedule' && steps.delivery_window.outputs.send == 'true' && steps.delivery_needed.outputs.needed == 'true') || inputs.mode == 'briefing'
+        continue-on-error: ${{ github.event_name == 'schedule' && github.event.schedule == '11 23 * * *' }}
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: vendor/TrendRadar/.venv/bin/python app.py run
+
+      - name: Send non-AI fallback on the final retry
+        id: degraded_fallback
+        if: github.event_name == 'schedule' && github.event.schedule == '11 23 * * *' && steps.ai_briefing.outcome == 'failure'
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        run: vendor/TrendRadar/.venv/bin/python app.py run-fallback
+
+      - name: Notify final delivery failure
+        if: always() && github.event_name == 'schedule' && github.event.schedule == '11 23 * * *' && steps.ai_briefing.outcome == 'failure' && steps.degraded_fallback.outcome == 'failure'
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+        run: vendor/TrendRadar/.venv/bin/python app.py notify-failure

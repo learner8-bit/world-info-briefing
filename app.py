@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import contextlib
 import hashlib
 import html
@@ -831,6 +832,15 @@ def quota_limit(cfg, state, day):
     return max(0, min(cfg['briefing']['max_items'], cfg['briefing']['max_daily_items'] - used))
 
 
+def delivery_needed(cfg, out, now=None):
+    """Return whether a scheduled retry still has useful work to do."""
+    state = load_state(out)
+    now = now or datetime.now(ZoneInfo(cfg['timezone']))
+    if any(run.get('status') == 'pending' for run in state['runs'].values()):
+        return True
+    return due_slot(cfg, state, now) is not None
+
+
 def deliver(cfg, out, state, key, sender=send):
     run = state['runs'][key]
     for channel in run['channels']:
@@ -896,6 +906,35 @@ def run_brief(cfg, sources, out, key, preview=False):
     atomic_json(out / 'state.json', state)  # 先落盘，再发送，失败可恢复
     deliver(cfg, out, state, key)
     print(f'简报完成：{len(events)} 条；{key}')
+
+
+def run_delivery(cfg, sources, out, degraded=False):
+    """Collect and deliver once; degraded mode deliberately bypasses AI."""
+    if not cfg['delivery']['enabled']:
+        raise ValueError('请先启用推送')
+    run_cfg = copy.deepcopy(cfg)
+    if degraded:
+        run_cfg['ai']['enabled'] = False
+    require_secrets(run_cfg, ai=run_cfg['ai']['enabled'], notification=True)
+    collect(run_cfg, sources, out)
+    now = datetime.now(ZoneInfo(run_cfg['timezone']))
+    key = due_slot(run_cfg, load_state(out), now) or now.strftime('%Y-%m-%d_%H-%M')
+    run_brief(run_cfg, sources, out, key)
+
+
+def notify_delivery_failure(cfg, out):
+    """Send a short operational alert after both normal and degraded delivery fail."""
+    require_secrets(cfg, notification=True)
+    repository = os.environ.get('GITHUB_REPOSITORY', '')
+    run_id = os.environ.get('GITHUB_RUN_ID', '')
+    run_url = f'https://github.com/{repository}/actions/runs/{run_id}' if repository and run_id else ''
+    text = cfg['briefing']['title'] + '\n今日简报自动生成与无 AI 降级推送均失败，请检查运行记录。'
+    if run_url:
+        text += '\n' + run_url
+    for channel in cfg['channels']:
+        if not send(channel, text, cfg, out, '简报发送失败'):
+            raise RuntimeError(f'{channel} 失败提醒未确认成功')
+    print('已发送简报失败提醒')
 
 
 def prune(cfg, out):
@@ -1055,7 +1094,9 @@ def run_dashboard(cfg):
 
 def main():
     parser = argparse.ArgumentParser(description='TrendRadar全球信息简报')
-    parser.add_argument('action', choices=['validate', 'ready', 'collect', 'preview', 'run', 'dashboard', 'serve', 'status', 'health', 'test-ai', 'test-notification'])
+    parser.add_argument('action', choices=['validate', 'ready', 'collect', 'preview', 'run', 'run-fallback',
+                                                  'delivery-needed', 'notify-failure', 'dashboard', 'serve',
+                                                  'status', 'health', 'test-ai', 'test-notification'])
     args = parser.parse_args()
     cfg, sources = configuration()
     out = output_dir(cfg)
@@ -1084,6 +1125,9 @@ def main():
             raise RuntimeError('最近一轮运行失败，请查看 status')
         if not status.get('at') or parse_date(status['at']) < utcnow() - timedelta(hours=1):
             raise RuntimeError('调度进程心跳超过1小时未更新')
+        return
+    if args.action == 'delivery-needed':
+        print('true' if delivery_needed(cfg, out) else 'false')
         return
     if args.action == 'dashboard':
         with FileLock(str(out / '.dashboard-server.lock'), timeout=0):
@@ -1115,14 +1159,10 @@ def main():
         elif args.action == 'preview':
             require_secrets(cfg, ai=cfg['ai']['enabled'])
             run_brief(cfg, sources, out, 'preview', preview=True)
-        elif args.action == 'run':
-            if not cfg['delivery']['enabled']:
-                raise ValueError('请先启用推送')
-            require_secrets(cfg, ai=cfg['ai']['enabled'], notification=True)
-            collect(cfg, sources, out)
-            now = datetime.now(ZoneInfo(cfg['timezone']))
-            key = due_slot(cfg, load_state(out), now) or now.strftime('%Y-%m-%d_%H-%M')
-            run_brief(cfg, sources, out, key)
+        elif args.action in ('run', 'run-fallback'):
+            run_delivery(cfg, sources, out, degraded=args.action == 'run-fallback')
+        elif args.action == 'notify-failure':
+            notify_delivery_failure(cfg, out)
         elif args.action == 'test-notification':
             require_secrets(cfg, notification=True)
             for channel in cfg['channels']:
