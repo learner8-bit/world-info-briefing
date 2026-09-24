@@ -423,7 +423,14 @@ def candidates(cfg, sources, out, state, now=None):
                 if kind == 'rss':
                     if not published and not source.get('allow_undated', False):
                         continue
-                    if published and (published < now - timedelta(days=source.get('max_age_days', 3)) or published > now + timedelta(hours=1)):
+                    # A daily brief should contain newly published material.  The
+                    # per-source max_age_days remains a defensive ceiling, while
+                    # lookback_hours is the actual daily freshness window.
+                    if published and (
+                        published < now - timedelta(hours=b['lookback_hours']) or
+                        published < now - timedelta(days=source.get('max_age_days', 3)) or
+                        published > now + timedelta(hours=1)
+                    ):
                         continue
                 url = canonical_url(row['url'])
                 if not url or url in sent_urls or url in grouped:
@@ -495,6 +502,58 @@ def check_response(raw, rows, cfg, limit):
     return sorted(events, key=lambda e: e['score'], reverse=True)[:limit]
 
 
+def balanced_ai_rows(rows, cfg, cap=80):
+    """Keep the AI request small while preserving the configured 4/4/2 mix."""
+    rows = list(rows)
+    if len(rows) <= cap:
+        return rows
+    mix = cfg['briefing']['mix']
+    target_total = sum(rule['target'] for rule in mix.values())
+    if target_total <= 0:
+        return rows[:cap]
+    selected = []
+    used = set()
+    for group, rule in mix.items():
+        quota = max(1, round(cap * rule['target'] / target_total)) if rule['target'] else 0
+        for row in rows:
+            if len([item for item in selected if item.get('group') == group]) >= quota:
+                break
+            if row.get('group', 'technology') == group and row['url'] not in used:
+                selected.append(row)
+                used.add(row['url'])
+    for row in rows:
+        if len(selected) >= cap:
+            break
+        if row['url'] not in used:
+            selected.append(row)
+            used.add(row['url'])
+    return selected[:cap]
+
+
+def apply_ai_mix(events, cfg, limit):
+    """Apply the configured broad-category targets after AI scoring."""
+    mix = cfg['briefing']['mix']
+    ranked = sorted(events, key=lambda event: event['score'], reverse=True)
+
+    def event_group(event):
+        groups = [source.get('group', 'technology') for source in event['sources']]
+        return max(mix, key=lambda key: (groups.count(key), -list(mix).index(key)))
+
+    indexed = [(index, event, event_group(event)) for index, event in enumerate(ranked)]
+    chosen_indexes = set()
+    for group, rule in mix.items():
+        for index, _event, event_group_name in indexed:
+            if sum(1 for chosen in chosen_indexes if indexed[chosen][2] == group) >= rule['target']:
+                break
+            if event_group_name == group:
+                chosen_indexes.add(index)
+    for index, _event, _group in indexed:
+        if len(chosen_indexes) >= limit:
+            break
+        chosen_indexes.add(index)
+    return [event for index, event, _group in indexed if index in chosen_indexes][:limit]
+
+
 def analyze(rows, cfg, state, limit):
     from trendradar.ai.client import AIClient
     if not cfg['ai']['enabled']:
@@ -507,14 +566,40 @@ def analyze(rows, cfg, state, limit):
     cutoff = utcnow() - timedelta(days=cfg['briefing']['dedup_days'])
     recent = list(dict.fromkeys(v['title'] for v in state['sent'].values() if parse_date(v['at']) > cutoff))[-200:]
     prompt = (ROOT / 'config' / cfg['briefing']['prompt']).read_text(encoding='utf-8')
-    request = {'categories': cfg['briefing']['categories'], 'max_items': limit,
-               'summary_chars': cfg['briefing']['summary_chars'], 'min_score': cfg['briefing']['min_score'],
-               'recent_events': recent, 'articles': rows}
-    with quiet_upstream():
-        raw = AIClient(ai).chat([{'role': 'system', 'content': prompt},
-                                {'role': 'user', 'content': json.dumps(request, ensure_ascii=False)}],
-                               **cfg['ai'].get('extra_params', {}))
-    return check_response(raw, rows, cfg, limit)
+    mix_targets = {
+        key: {'label': rule['label'], 'target': rule['target']}
+        for key, rule in cfg['briefing']['mix'].items()
+    }
+    client = AIClient(ai)
+    attempt_caps = [80, 40]
+    # Ask the model for a wider ranked shortlist. If it returns only the final
+    # ten items, post-processing cannot repair a 5/3/2 split into 4/4/2.
+    shortlist_limit = min(len(rows), max(limit, min(20, limit * 2)))
+    last_error = None
+    for cap in attempt_caps:
+        attempt_rows = balanced_ai_rows(rows, cfg, min(cap, len(rows)))
+        request = {
+            'categories': cfg['briefing']['categories'],
+            'mix_targets': mix_targets,
+            'max_items': shortlist_limit,
+            'summary_chars': cfg['briefing']['summary_chars'],
+            'min_score': cfg['briefing']['min_score'],
+            'recent_events': recent,
+            'articles': attempt_rows,
+        }
+        try:
+            with quiet_upstream():
+                raw = client.chat([
+                    {'role': 'system', 'content': prompt},
+                    {'role': 'user', 'content': json.dumps(request, ensure_ascii=False)},
+                ], **cfg['ai'].get('extra_params', {}))
+            events = check_response(raw, attempt_rows, cfg, shortlist_limit)
+            return apply_ai_mix(events, cfg, limit)
+        except (json.JSONDecodeError, ValueError) as exc:
+            last_error = exc
+            if cap == attempt_caps[-1] or len(attempt_rows) <= 40:
+                raise
+    raise last_error
 
 
 def test_ai_connection(cfg):
@@ -853,13 +938,19 @@ def collect_once(cfg, sources, out, wait=True):
 def dashboard_payload():
     cfg, sources = configuration()
     out = output_dir(cfg)
-    state = load_state(out)
     collection = read_json(out / 'collection.json', {})
     action = read_json(out / 'dashboard-action.json', {'status': 'idle'})
-    try:
-        recent = candidates(cfg, sources, out, state)[:24]
-    except (OSError, sqlite3.Error, ValueError):
-        recent = []
+    preview = read_json(out / 'briefings' / 'preview.json', {})
+    recent = []
+    for event in preview.get('events', []):
+        for source in event.get('sources', [])[:1]:
+            recent.append({
+                **source,
+                'title': event.get('title') or source.get('title', ''),
+                'summary': event.get('summary') or source.get('summary', ''),
+                'category': event.get('category', ''),
+            })
+    recent = recent[:24]
     secret_status = {
         'ai_api_key': bool(os.environ.get('AI_API_KEY')),
         'feishu_webhook': bool(os.environ.get('FEISHU_WEBHOOK_URL')),
@@ -869,10 +960,11 @@ def dashboard_payload():
         'collection': collection,
         'worker': read_json(out / 'worker.json', {}),
         'action': action,
+        'preview': preview,
         'recent': recent,
         'secret_status': secret_status,
         'project_path': str(ROOT),
-        'version': '1.1.0',
+        'version': '2.0.1',
     }
 
 
@@ -885,7 +977,7 @@ def start_dashboard_collection():
         return False
 
     def worker():
-        atomic_json(out / 'dashboard-action.json', {'status': 'running', 'started_at': stamp()})
+        atomic_json(out / 'dashboard-action.json', {'status': 'running', 'kind': 'collect', 'started_at': stamp()})
         try:
             latest_cfg, latest_sources = configuration()
             result = collect_once(latest_cfg, latest_sources, output_dir(latest_cfg), wait=False)
@@ -893,15 +985,62 @@ def start_dashboard_collection():
                 atomic_json(out / 'dashboard-action.json', {'status': 'busy', 'finished_at': stamp()})
             else:
                 atomic_json(out / 'dashboard-action.json', {
-                    'status': 'complete', 'finished_at': stamp(), 'healthy': result['healthy'],
+                    'status': 'complete', 'kind': 'collect', 'finished_at': stamp(), 'healthy': result['healthy'],
                     'total_items': result['total_items']
                 })
         except Exception as exc:
             atomic_json(out / 'dashboard-action.json', {
-                'status': 'error', 'finished_at': stamp(), 'error_type': type(exc).__name__
+                'status': 'error', 'kind': 'collect', 'finished_at': stamp(), 'error_type': type(exc).__name__
             })
 
     threading.Thread(target=worker, name='dashboard-collection', daemon=True).start()
+    return True
+
+
+def start_dashboard_preview():
+    cfg, _ = configuration()
+    out = output_dir(cfg)
+    current = read_json(out / 'dashboard-action.json', {'status': 'idle'})
+    started = parse_date(current.get('started_at'))
+    if current.get('status') == 'running' and started and started > utcnow() - timedelta(hours=2):
+        return False
+
+    def worker():
+        atomic_json(out / 'dashboard-action.json', {
+            'status': 'running', 'kind': 'preview', 'started_at': stamp(),
+        })
+        acquired = OPERATION_LOCK.acquire(blocking=False)
+        if not acquired:
+            atomic_json(out / 'dashboard-action.json', {
+                'status': 'busy', 'kind': 'preview', 'finished_at': stamp(),
+            })
+            return
+        try:
+            latest_cfg, latest_sources = configuration()
+            latest_out = output_dir(latest_cfg)
+            with FileLock(str(latest_out / '.operation.lock'), timeout=0):
+                collection = read_json(latest_out / 'collection.json', {})
+                stale_after = timedelta(minutes=latest_cfg['schedule']['collect_minutes'] * 2 + 10)
+                collection_at = parse_date(collection.get('at'))
+                if not collection or not collection.get('healthy') or not collection_at or collection_at < utcnow() - stale_after:
+                    collect(latest_cfg, latest_sources, latest_out)
+                require_secrets(latest_cfg, ai=latest_cfg['ai']['enabled'], notification=False)
+                run_brief(latest_cfg, latest_sources, latest_out, 'dashboard-preview', preview=True)
+                report = read_json(latest_out / 'briefings' / 'preview.json', {})
+            atomic_json(latest_out / 'dashboard-action.json', {
+                'status': 'complete', 'kind': 'preview', 'finished_at': stamp(),
+                'count': len(report.get('events', [])),
+                'candidate_count': report.get('candidate_count', 0),
+            })
+        except Exception as exc:
+            atomic_json(out / 'dashboard-action.json', {
+                'status': 'error', 'kind': 'preview', 'finished_at': stamp(),
+                'error_type': type(exc).__name__, 'message': str(exc)[:240],
+            })
+        finally:
+            OPERATION_LOCK.release()
+
+    threading.Thread(target=worker, name='dashboard-preview', daemon=True).start()
     return True
 
 
@@ -910,6 +1049,7 @@ def run_dashboard(cfg):
     serve_dashboard(
         ROOT, cfg['dashboard']['host'], cfg['dashboard']['port'],
         dashboard_payload, save_editable_configuration, start_dashboard_collection,
+        start_dashboard_preview,
     )
 
 

@@ -18,6 +18,24 @@
         {}
       ],
       "completed_at": "2026-09-22T12:33:39.002777+00:00"
+    },
+    "2026-09-23_17-43": {
+      "created_at": "2026-09-23T09:43:25.113231+00:00",
+      "day": "2026-09-23",
+      "status": "complete",
+      "events": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ],
+      "completed_at": "2026-09-23T09:43:25.670443+00:00"
     }
   },
   "sent": {
@@ -60,6 +78,46 @@
     "https://www.thepaper.cn/newsDetail_forward_34117570": {
       "at": "2026-09-22T12:33:39.002777+00:00",
       "title": "重庆理工大学通报“廖某被我校原教师李某性侵后报警未立案”"
+    },
+    "https://openai.com/index/introducing-gpt-6-sol-and-luna": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "OpenAI发布GPT-6 Sol与Luna两款模型"
+    },
+    "https://openai.com/index/better-prompt-caching-for-gpt-6": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "GPT-6提示缓存改进：更高命中率与显式断点"
+    },
+    "https://arstechnica.com/ai/2026/09/new-anthropic-openai-models-make-same-promise-a-little-more-for-a-lot-less-money/": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "Anthropic与OpenAI新模型主打“更少钱换更多能力”"
+    },
+    "https://www.qbitai.com/2026/09/496393.html": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "DeepSeek公开Agent训练新论文，梁文锋署名"
+    },
+    "https://www.bbc.co.uk/news/articles/cx305ymq4ldqo?at_medium=RSS&at_campaign=rss": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "IMF警告美英需应对不断攀升的债务成本"
+    },
+    "https://www.leiphone.com/category/ai/f8vJztYMmCQ3ENED.html": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "小米开源MiMo-V2.6：1M上下文，后训练用长轨迹RL"
+    },
+    "https://developer.nvidia.com/blog/whats-new-for-game-developers-dlss-5-with-3d-guided-neural-rendering-nvidia-ace-updates-and-new-rtx-kit-capabilities/": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "NVIDIA发布DLSS 5：3D引导神经渲染"
+    },
+    "https://www.nature.com/articles/s41593-026-02454-2": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "Nature Neuroscience：大规模筛选人脑皮层结构相关非编码变异"
+    },
+    "https://www.bbc.co.uk/news/articles/c607ly09y7rlo?at_medium=RSS&at_campaign=rss": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "OECD下调英国明年经济增长预期"
+    },
+    "https://news.un.org/feed/view/en/story/2026/09/1168398": {
+      "at": "2026-09-23T09:43:25.670443+00:00",
+      "title": "联合国：海平面上升威胁岛屿国家生存"
     }
   }
 }

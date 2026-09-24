@@ -10,3 +10,5 @@ score 在0到1之间：重大公共影响/直接相关可实践知识/高价值�
 只输出JSON对象，不加Markdown代码围栏。格式：
 {"items":[{"title":"中文标题","category":"categories中的精确名称","score":0.9,"summary":"有证据支持的中文摘要","source_ids":["输入ID"]}]}
 不要输出URL；链接由程序从原始输入回填。title最多80字符。summary最多请求summary_chars字符。按信息价值排序，最多请求max_items条。每个ID最多属于一个事件。
+请求中的 articles.group 对应政治经济、科技、生物科学三个大类。尽量满足 mix_targets 的数量目标；某类达到门槛的内容确实不足时才把空位分给其他类，禁止为凑数降低质量标准。
+输出必须是完整、可解析的单个 JSON 对象。不要重复输出同一个 source_id，不要补充解释文字。
