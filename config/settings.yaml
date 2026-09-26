@@ -3,7 +3,7 @@ schedule:
   collect_minutes: 30
   times:
   - '22:00'
-  catchup_minutes: 240
+  catchup_minutes: 900
 briefing:
   title: 全球高质量信息简报
   max_items: 10

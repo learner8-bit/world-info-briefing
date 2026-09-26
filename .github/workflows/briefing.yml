@@ -2,16 +2,15 @@ name: World info Feishu briefing
 
 on:
   schedule:
-    # The primary run queues 77 minutes early and waits until 22:00. Three later
-    # runs retry only when today's delivery state still shows a missing briefing.
-    - cron: '43 20 * * *'
-      timezone: 'Asia/Shanghai'
-    - cron: '11 22 * * *'
-      timezone: 'Asia/Shanghai'
-    - cron: '41 22 * * *'
-      timezone: 'Asia/Shanghai'
-    - cron: '11 23 * * *'
-      timezone: 'Asia/Shanghai'
+    # UTC equivalents of 20:43, 22:11, 22:41 and 23:11 Asia/Shanghai.
+    # Explicit UTC avoids relying on the newer timezone-aware scheduler path.
+    - cron: '43 12 * * *'
+    - cron: '11 14 * * *'
+    - cron: '41 14 * * *'
+    - cron: '11 15 * * *'
+    # 07:17 Asia/Shanghai recovery: only sends when the previous 22:00 slot
+    # remains incomplete, and always collects fresh content at recovery time.
+    - cron: '17 23 * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -49,9 +48,22 @@ jobs:
 
           local_hm="$(TZ=Asia/Shanghai date +%H%M)"
           local_minutes=$((10#${local_hm:0:2} * 60 + 10#${local_hm:2:2}))
+          if [[ "${{ github.event.schedule }}" == "17 23 * * *" ]]; then
+            if (( local_minutes < 390 || local_minutes > 750 )); then
+              echo "Morning recovery started outside 06:30-12:30 Asia/Shanghai; skipping delivery."
+              echo "send=false" >> "$GITHUB_OUTPUT"
+              echo "late=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "send=true" >> "$GITHUB_OUTPUT"
+            echo "late=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if (( local_minutes < 1235 || local_minutes > 1410 )); then
             echo "Scheduled run started outside 20:35-23:30 Asia/Shanghai; skipping delivery."
             echo "send=false" >> "$GITHUB_OUTPUT"
+            echo "late=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -61,6 +73,7 @@ jobs:
             (( wait_seconds > 0 )) && sleep "$wait_seconds"
           fi
           echo "send=true" >> "$GITHUB_OUTPUT"
+          echo "late=false" >> "$GITHUB_OUTPUT"
 
       - name: Check out configuration
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,7 +126,7 @@ jobs:
       - name: Collect and send AI briefing
         id: ai_briefing
         if: (github.event_name == 'schedule' && steps.delivery_window.outputs.send == 'true' && steps.delivery_needed.outputs.needed == 'true') || inputs.mode == 'briefing'
-        continue-on-error: ${{ github.event_name == 'schedule' && github.event.schedule == '11 23 * * *' }}
+        continue-on-error: ${{ github.event_name == 'schedule' && (github.event.schedule == '11 15 * * *' || github.event.schedule == '17 23 * * *') }}
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
@@ -121,13 +134,20 @@ jobs:
 
       - name: Send non-AI fallback on the final retry
         id: degraded_fallback
-        if: github.event_name == 'schedule' && github.event.schedule == '11 23 * * *' && steps.ai_briefing.outcome == 'failure'
+        if: github.event_name == 'schedule' && (github.event.schedule == '11 15 * * *' || github.event.schedule == '17 23 * * *') && steps.ai_briefing.outcome == 'failure'
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
         run: vendor/TrendRadar/.venv/bin/python app.py run-fallback
 
       - name: Notify final delivery failure
-        if: always() && github.event_name == 'schedule' && github.event.schedule == '11 23 * * *' && steps.ai_briefing.outcome == 'failure' && steps.degraded_fallback.outcome == 'failure'
+        if: always() && github.event_name == 'schedule' && (github.event.schedule == '11 15 * * *' || github.event.schedule == '17 23 * * *') && steps.ai_briefing.outcome == 'failure' && steps.degraded_fallback.outcome == 'failure'
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
         run: vendor/TrendRadar/.venv/bin/python app.py notify-failure
+
+      - name: Mark an exhausted delivery window as failed
+        if: github.event_name == 'schedule' && steps.delivery_window.outputs.late == 'true' && (github.event.schedule == '11 15 * * *' || github.event.schedule == '17 23 * * *')
+        shell: bash
+        run: |
+          echo "::error::GitHub created this scheduled event after its allowed delivery window."
+          exit 1
